@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "dev": "concurrently --kill-others-on-fail \"npm:dev:server\" \"npm:dev:client:local\"",
     "dev:client": "vite",
+    "dev:client:local": "vite --host 127.0.0.1 --port 4173",
     "dev:server": "node server/index.js",
     "build": "vite build",
     "lint": "eslint .",

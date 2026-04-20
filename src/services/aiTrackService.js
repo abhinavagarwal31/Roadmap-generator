@@ -22,7 +22,11 @@ export async function generateAssessmentQuiz({ prompt }) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const apiError = payload?.error || "Assessment quiz request failed. Please try again.";
+    const apiError =
+      payload?.error ||
+      (response.status === 404
+        ? "Assessment endpoint not found on backend. Please restart the server and try again."
+        : "Assessment quiz request failed. Please try again.");
     throw new Error(apiError);
   }
 
@@ -57,7 +61,11 @@ export async function generateTrackWithAi({ prompt, assessment }) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const apiError = payload?.error || "AI request failed. Please try again.";
+    const apiError =
+      payload?.error ||
+      (response.status === 404
+        ? "Track generation endpoint not found on backend. Please restart the server and try again."
+        : "AI request failed. Please try again.");
     throw new Error(apiError);
   }
 
