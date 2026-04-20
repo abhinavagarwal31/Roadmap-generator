@@ -1,0 +1,268 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg-primary: #0b0b0b;
+  --color-bg-card: #141414;
+  --color-bg-elevated: #1f1f1f;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-border-strong: #3a3a3a;
+  --color-border-soft: #52525b;
+  --color-reactflow-grid: #1f1f1f;
+  --color-reactflow-mask: rgba(0, 0, 0, 0.6);
+  --color-overlay: rgba(0, 0, 0, 0.7);
+}
+
+:root[data-theme="light"],
+body[data-theme="light"] {
+  --color-bg-primary: #f5f7fb;
+  --color-bg-card: #ffffff;
+  --color-bg-elevated: #eef2f7;
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #6b7280;
+  --color-border-strong: #d1d5db;
+  --color-border-soft: #cbd5e1;
+  --color-reactflow-grid: #d6dce8;
+  --color-reactflow-mask: rgba(255, 255, 255, 0.6);
+  --color-overlay: rgba(15, 23, 42, 0.28);
+}
+
+/* ─── Base Reset ─── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: "Inter", system-ui, sans-serif;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ─── Scrollbar (subtle dark) ─── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-card);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #e50914;
+}
+
+/* ─── React Flow overrides ─── */
+.react-flow__background {
+  background-color: var(--color-bg-primary) !important;
+}
+
+.react-flow__controls button {
+  background-color: var(--color-bg-card) !important;
+  border-color: var(--color-border-strong) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.react-flow__controls button:hover {
+  background-color: #e50914 !important;
+}
+
+.react-flow__minimap {
+  background-color: var(--color-bg-card) !important;
+}
+
+/* ─── Light mode utility overrides for existing classes ─── */
+:root[data-theme="light"] .bg-bg-primary,
+body[data-theme="light"] .bg-bg-primary {
+  background-color: #f5f7fb !important;
+}
+
+:root[data-theme="light"] .bg-bg-card,
+body[data-theme="light"] .bg-bg-card {
+  background-color: #ffffff !important;
+}
+
+:root[data-theme="light"] .bg-bg-elevated,
+body[data-theme="light"] .bg-bg-elevated {
+  background-color: #eef2f7 !important;
+}
+
+:root[data-theme="light"] .text-white,
+body[data-theme="light"] .text-white {
+  color: var(--color-text-primary) !important;
+}
+
+:root[data-theme="light"] .bg-accent-red.text-white,
+body[data-theme="light"] .bg-accent-red.text-white,
+:root[data-theme="light"] .hover\:bg-accent-red.hover\:text-white:hover,
+body[data-theme="light"] .hover\:bg-accent-red.hover\:text-white:hover,
+:root[data-theme="light"] .hover\:bg-accent-redHover.hover\:text-white:hover,
+body[data-theme="light"] .hover\:bg-accent-redHover.hover\:text-white:hover,
+:root[data-theme="light"] .active\:bg-accent-redDim.active\:text-white:active,
+body[data-theme="light"] .active\:bg-accent-redDim.active\:text-white:active,
+:root[data-theme="light"] .bg-red-600.text-white,
+body[data-theme="light"] .bg-red-600.text-white,
+:root[data-theme="light"] .bg-red-700.text-white,
+body[data-theme="light"] .bg-red-700.text-white,
+:root[data-theme="light"] .bg-red-800.text-white,
+body[data-theme="light"] .bg-red-800.text-white,
+:root[data-theme="light"] .bg-red-900.text-white,
+body[data-theme="light"] .bg-red-900.text-white {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .text-gray-300,
+body[data-theme="light"] .text-gray-300,
+:root[data-theme="light"] .text-gray-400,
+body[data-theme="light"] .text-gray-400,
+:root[data-theme="light"] .text-gray-500,
+body[data-theme="light"] .text-gray-500,
+:root[data-theme="light"] .text-gray-600,
+body[data-theme="light"] .text-gray-600,
+:root[data-theme="light"] .text-neutral-300,
+body[data-theme="light"] .text-neutral-300,
+:root[data-theme="light"] .text-neutral-400,
+body[data-theme="light"] .text-neutral-400,
+:root[data-theme="light"] .text-neutral-500,
+body[data-theme="light"] .text-neutral-500,
+:root[data-theme="light"] .text-neutral-600,
+body[data-theme="light"] .text-neutral-600 {
+  color: var(--color-text-secondary) !important;
+}
+
+:root[data-theme="light"] .placeholder-gray-600::placeholder,
+body[data-theme="light"] .placeholder-gray-600::placeholder {
+  color: #6b7280 !important;
+}
+
+:root[data-theme="light"] .hover\:text-white:hover,
+body[data-theme="light"] .hover\:text-white:hover {
+  color: var(--color-text-primary) !important;
+}
+
+:root[data-theme="light"] .bg-neutral-700,
+body[data-theme="light"] .bg-neutral-700,
+:root[data-theme="light"] .bg-neutral-800,
+body[data-theme="light"] .bg-neutral-800 {
+  background-color: #e5e7eb !important;
+}
+
+:root[data-theme="light"] .bg-neutral-600,
+body[data-theme="light"] .bg-neutral-600 {
+  background-color: #cbd5e1 !important;
+}
+
+:root[data-theme="light"] .border-neutral-500,
+body[data-theme="light"] .border-neutral-500,
+:root[data-theme="light"] .border-neutral-600,
+body[data-theme="light"] .border-neutral-600,
+:root[data-theme="light"] .border-neutral-700,
+body[data-theme="light"] .border-neutral-700,
+:root[data-theme="light"] .border-neutral-800,
+body[data-theme="light"] .border-neutral-800 {
+  border-color: var(--color-border-strong) !important;
+}
+
+:root[data-theme="light"] .shadow-2xl,
+body[data-theme="light"] .shadow-2xl {
+  box-shadow: 0 20px 45px -20px rgba(15, 23, 42, 0.25) !important;
+}
+
+:root[data-theme="light"] .bg-black\/70,
+body[data-theme="light"] .bg-black\/70 {
+  background-color: var(--color-overlay) !important;
+}
+
+:root[data-theme="light"] .bg-red-950,
+body[data-theme="light"] .bg-red-950 {
+  background-color: #fee2e2 !important;
+}
+
+:root[data-theme="light"] .border-red-900,
+body[data-theme="light"] .border-red-900 {
+  border-color: #fca5a5 !important;
+}
+
+:root[data-theme="light"] .text-red-400,
+body[data-theme="light"] .text-red-400 {
+  color: #b91c1c !important;
+}
+
+:root[data-theme="light"] .bg-green-950,
+body[data-theme="light"] .bg-green-950 {
+  background-color: #dcfce7 !important;
+}
+
+:root[data-theme="light"] .border-green-800,
+body[data-theme="light"] .border-green-800 {
+  border-color: #86efac !important;
+}
+
+:root[data-theme="light"] .text-green-400,
+body[data-theme="light"] .text-green-400 {
+  color: #166534 !important;
+}
+
+:root[data-theme="light"] .bg-yellow-950,
+body[data-theme="light"] .bg-yellow-950 {
+  background-color: #fef9c3 !important;
+}
+
+:root[data-theme="light"] .border-yellow-800,
+body[data-theme="light"] .border-yellow-800 {
+  border-color: #facc15 !important;
+}
+
+:root[data-theme="light"] .text-yellow-300,
+body[data-theme="light"] .text-yellow-300 {
+  color: #854d0e !important;
+}
+
+/* ─── Custom animations ─── */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-red {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(229, 9, 20, 0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out both;
+}
+
+.animate-pulse-red {
+  animation: pulse-red 2s infinite;
+}
+
+/* ─── Progress bar animation ─── */
+.progress-bar-fill {
+  transition: width 0.6s ease-in-out;
+}
