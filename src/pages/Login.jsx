@@ -5,12 +5,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { isFirebaseConfigured } from "../services/firebase";
+import { firebaseConfigIssue, isFirebaseConfigured } from "../services/firebase";
 import ThemeToggle from "../components/ThemeToggle";
 
 export default function Login() {
-  const { login, signup } = useAuth();
+  const { login, signup, isDemoMode } = useAuth();
   const navigate = useNavigate();
+  const authUnavailable = !isFirebaseConfigured && !isDemoMode;
 
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
@@ -22,6 +23,12 @@ export default function Login() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+
+    if (authUnavailable) {
+      setError(firebaseConfigIssue || "Firebase is not configured for this deployment.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -33,7 +40,7 @@ export default function Login() {
       navigate("/dashboard");
     } catch (err) {
       // Map common Firebase error codes to user-friendly messages
-      const msg = friendlyError(err.code);
+      const msg = err?.code ? friendlyError(err.code) : err?.message || "Something went wrong. Please try again.";
       setError(msg);
     } finally {
       setLoading(false);
@@ -57,11 +64,11 @@ export default function Login() {
             <p className="text-gray-400 text-sm">Learning Path Visualizer</p>
           </div>
 
-          {/* Demo mode banner */}
-          {!isFirebaseConfigured && (
+          {/* Mode banner */}
+          {isDemoMode && (
             <div className="mb-5 px-3 py-2.5 rounded border border-yellow-800 bg-yellow-950 text-yellow-300 text-xs leading-relaxed">
-              <strong>Demo Mode</strong> — Firebase is not configured. Any email/password will work.
-              Progress is saved locally in your browser.{" "}
+              <strong>Demo Mode</strong> — Firebase is not configured and demo mode is explicitly enabled.
+              Progress is saved locally in your browser. {" "}
               <a
                 href="https://console.firebase.google.com/"
                 target="_blank"
@@ -69,6 +76,21 @@ export default function Login() {
                 className="underline hover:text-yellow-100"
               >
                 Set up Firebase →
+              </a>
+            </div>
+          )}
+
+          {authUnavailable && (
+            <div className="mb-5 px-3 py-2.5 rounded border border-red-900 bg-red-950 text-red-300 text-xs leading-relaxed">
+              <strong>Firebase Required</strong> — Demo mode is disabled for this app.
+              Configure Firebase env vars in your deployment and redeploy. {" "}
+              <a
+                href="https://console.firebase.google.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-red-100"
+              >
+                Open Firebase →
               </a>
             </div>
           )}
@@ -112,6 +134,7 @@ export default function Login() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={authUnavailable || loading}
                 placeholder="you@example.com"
                 className="w-full bg-bg-elevated border border-neutral-700 rounded px-3 py-2.5 text-sm
                            text-white placeholder-gray-600 outline-none
@@ -130,6 +153,7 @@ export default function Login() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={authUnavailable || loading}
                 placeholder="••••••••"
                 minLength={6}
                 className="w-full bg-bg-elevated border border-neutral-700 rounded px-3 py-2.5 text-sm
@@ -148,7 +172,7 @@ export default function Login() {
             {/* Submit */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || authUnavailable}
               className="w-full py-2.5 rounded font-semibold text-sm bg-accent-red text-white
                          hover:bg-accent-redHover active:bg-accent-redDim transition-colors
                          disabled:opacity-50 disabled:cursor-not-allowed mt-2"

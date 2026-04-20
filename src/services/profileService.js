@@ -1,13 +1,16 @@
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
-import { db, isFirebaseConfigured } from "./firebase";
+import { db, isDemoModeEnabled, isFirebaseConfigured } from "./firebase";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const USER_PROFILE_PREFIX = "lumospath_user_profile_";
 
 export async function getUserProfileDetails(userId) {
   const fallback = getLocalProfile(userId);
-  if (!isFirebaseConfigured) return fallback;
+  if (!isFirebaseConfigured) {
+    if (isDemoModeEnabled) return fallback;
+    return normalizeProfile({});
+  }
 
   try {
     const ref = doc(db, "users", userId);
@@ -28,16 +31,20 @@ export async function getUserProfileDetails(userId) {
 export async function saveUserProfileDetails(userId, profileInput) {
   const normalized = normalizeProfile(profileInput);
 
-  // Always keep local profile cached.
-  saveLocalProfile(userId, normalized);
+  if (isDemoModeEnabled) {
+    // Keep local profile cached only in explicit demo mode.
+    saveLocalProfile(userId, normalized);
+  }
 
-  if (!isFirebaseConfigured) return normalized;
+  if (!isFirebaseConfigured) {
+    throw new Error("Firebase is not configured for saving profile details.");
+  }
 
   try {
     const ref = doc(db, "users", userId);
     await setDoc(ref, { profile: normalized }, { merge: true });
   } catch (err) {
-    console.warn("Could not save user profile to Firestore:", err.message);
+    throw new Error(err?.message || "Could not save user profile to Firestore.");
   }
 
   return normalized;

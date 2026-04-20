@@ -31,6 +31,11 @@ Required Firebase vars:
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
 
+Demo mode flag:
+
+- `VITE_ENABLE_DEMO_MODE` (optional, default `false`)
+	- Keep this `false` in production if you do not want demo mode.
+
 Required AI backend vars:
 
 - `OPENAI_API_KEY` (server-side only)
@@ -40,6 +45,9 @@ Required AI backend vars:
 Optional frontend API var:
 
 - `VITE_API_BASE_URL` (only needed when frontend/backend are on different domains)
+
+For Vercel deployment, add all `VITE_FIREBASE_*` vars in Project Settings -> Environment Variables.
+If these are missing, login is blocked when demo mode is disabled.
 
 ## 3) Firebase setup (from your current screen)
 

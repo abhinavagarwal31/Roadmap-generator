@@ -10,7 +10,7 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { auth, db, isFirebaseConfigured } from "./firebase";
+import { auth, db, isDemoModeEnabled, isFirebaseConfigured } from "./firebase";
 import { getCustomTracks } from "./customTrackService";
 
 // ─── Demo mode progress (localStorage) ───────────────────────────────────────
@@ -85,6 +85,7 @@ function mergeWithCustomTracks(baseSkills = [], baseTopics = [], userId) {
  */
 export async function getSkills(userId) {
   if (!isFirebaseConfigured) {
+    if (!isDemoModeEnabled) return [];
     const { skills } = mergeWithCustomTracks([], [], userId);
     return skills;
   }
@@ -112,6 +113,7 @@ export async function getSkills(userId) {
  */
 export async function getTopics(userId) {
   if (!isFirebaseConfigured) {
+    if (!isDemoModeEnabled) return [];
     const { topics } = mergeWithCustomTracks([], [], userId);
     return topics;
   }
@@ -138,7 +140,7 @@ export async function getTopic(topicId, userId) {
   const { topics: customTopics } = mergeWithCustomTracks([], [], userId);
   const customTopic = customTopics.find((topic) => topic.id === topicId) || null;
 
-  if (!isFirebaseConfigured) return customTopic;
+  if (!isFirebaseConfigured) return isDemoModeEnabled ? customTopic : null;
 
   try {
     const ref = doc(db, "topics", topicId);
@@ -157,7 +159,7 @@ export async function getTopic(topicId, userId) {
  * Returns { topicId: true, ... } or {} if no progress yet.
  */
 export async function getUserProgress(userId) {
-  if (!isFirebaseConfigured) return getDemoProgress(userId);
+  if (!isFirebaseConfigured) return isDemoModeEnabled ? getDemoProgress(userId) : {};
 
   try {
     const ref = doc(db, "users", userId);
@@ -166,8 +168,8 @@ export async function getUserProgress(userId) {
     return {};
   } catch (err) {
     console.warn("Could not fetch user progress:", err.message);
-    // Fall back to localStorage in case of Firestore error
-    return getDemoProgress(userId);
+    // Use local fallback only when demo mode is explicitly enabled.
+    return isDemoModeEnabled ? getDemoProgress(userId) : {};
   }
 }
 
@@ -176,6 +178,10 @@ export async function getUserProgress(userId) {
  */
 export async function markTopicComplete(userId, topicId) {
   if (!isFirebaseConfigured) {
+    if (!isDemoModeEnabled) {
+      throw new Error("Firebase is not configured for progress updates.");
+    }
+
     // Demo mode: persist to localStorage
     const current = getDemoProgress(userId);
     saveDemoProgress(userId, { ...current, [topicId]: true });
@@ -192,7 +198,11 @@ export async function markTopicComplete(userId, topicId) {
       await setDoc(ref, { progress: { [topicId]: true } }, { merge: true });
     }
   } catch (err) {
-    // Fallback to localStorage on Firestore error
+    if (!isDemoModeEnabled) {
+      throw err;
+    }
+
+    // Fallback to localStorage only in demo mode.
     console.warn("Firestore write failed, saving locally:", err.message);
     const current = getDemoProgress(userId);
     saveDemoProgress(userId, { ...current, [topicId]: true });

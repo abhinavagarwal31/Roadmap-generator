@@ -1,7 +1,7 @@
 // src/context/AuthContext.jsx
 // Provides Firebase auth state to the entire app.
 // Exposes: user, loading, login(), signup(), logout()
-// When Firebase is not configured, runs in "demo mode" with localStorage-based auth.
+// Demo mode is enabled only when VITE_ENABLE_DEMO_MODE=true.
 
 /* eslint-disable react-refresh/only-export-components */
 
@@ -16,7 +16,7 @@ import {
   updatePassword,
   updateProfile,
 } from "firebase/auth";
-import { auth, isFirebaseConfigured } from "../services/firebase";
+import { auth, isDemoModeEnabled, isFirebaseConfigured } from "../services/firebase";
 
 // Create the context
 const AuthContext = createContext(null);
@@ -56,10 +56,16 @@ function setDemoUser(userData) {
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => (!isFirebaseConfigured || !auth ? getDemoUser() : null));
-  const [loading, setLoading] = useState(() => isFirebaseConfigured && !!auth);
+  const useDemoMode = isDemoModeEnabled && !isFirebaseConfigured;
+
+  const [user, setUser] = useState(() => (useDemoMode ? getDemoUser() : null));
+  const [loading, setLoading] = useState(() => !useDemoMode && isFirebaseConfigured && !!auth);
 
   useEffect(() => {
+    if (useDemoMode) {
+      return;
+    }
+
     if (!isFirebaseConfigured || !auth) {
       return;
     }
@@ -83,12 +89,18 @@ export function AuthProvider({ children }) {
       unsubscribe();
       clearTimeout(timeout);
     };
-  }, []);
+  }, [useDemoMode]);
+
+  function ensureFirebaseAuthAvailable() {
+    if (!isFirebaseConfigured || !auth) {
+      throw new Error("Firebase authentication is not configured for this environment.");
+    }
+  }
 
   // ── Auth actions ────────────────────────────────────────────────────────
 
   async function signup(email, password) {
-    if (!isFirebaseConfigured) {
+    if (useDemoMode) {
       // Demo mode: fake signup
       const demoUser = {
         uid: `demo-${Date.now()}`,
@@ -100,12 +112,13 @@ export function AuthProvider({ children }) {
       setUser(demoUser);
       return { user: demoUser };
     }
+    ensureFirebaseAuthAvailable();
     const result = await createUserWithEmailAndPassword(auth, email, password);
     return result;
   }
 
   async function login(email, password) {
-    if (!isFirebaseConfigured) {
+    if (useDemoMode) {
       // Demo mode: any email/password combo works
       const demoUser = {
         uid: `demo-${email.replace(/\W/g, "")}`,
@@ -117,16 +130,18 @@ export function AuthProvider({ children }) {
       setUser(demoUser);
       return { user: demoUser };
     }
+    ensureFirebaseAuthAvailable();
     const result = await signInWithEmailAndPassword(auth, email, password);
     return result;
   }
 
   async function logout() {
-    if (!isFirebaseConfigured) {
+    if (useDemoMode) {
       setDemoUser(null);
       setUser(null);
       return;
     }
+    ensureFirebaseAuthAvailable();
     await signOut(auth);
   }
 
@@ -139,7 +154,7 @@ export function AuthProvider({ children }) {
       throw new Error("New password must be at least 6 characters.");
     }
 
-    if (!isFirebaseConfigured) {
+    if (useDemoMode) {
       const demoUser = getDemoUser();
       if (!demoUser) throw new Error("No active user session.");
       if ((demoUser.demoPassword || "") !== currentPassword) {
@@ -151,6 +166,8 @@ export function AuthProvider({ children }) {
       setUser(updated);
       return;
     }
+
+    ensureFirebaseAuthAvailable();
 
     const activeUser = auth?.currentUser;
     if (!activeUser?.email) {
@@ -168,7 +185,7 @@ export function AuthProvider({ children }) {
       throw new Error("Display name cannot be empty.");
     }
 
-    if (!isFirebaseConfigured) {
+    if (useDemoMode) {
       const demoUser = getDemoUser();
       if (!demoUser) throw new Error("No active user session.");
 
@@ -177,6 +194,8 @@ export function AuthProvider({ children }) {
       setUser(updated);
       return;
     }
+
+    ensureFirebaseAuthAvailable();
 
     const activeUser = auth?.currentUser;
     if (!activeUser) {
@@ -195,7 +214,7 @@ export function AuthProvider({ children }) {
     logout,
     changePassword: changePasswordForUser,
     updateDisplayName: updateDisplayNameForUser,
-    isDemoMode: !isFirebaseConfigured,
+    isDemoMode: useDemoMode,
   };
 
   return (
