@@ -21,7 +21,7 @@ export default function TopicDetails() {
   const [marking, setMarking] = useState(false);
   const [markError, setMarkError] = useState("");
 
-  const { completedMap, isTopicUnlocked, markComplete } = useProgress([topic].filter(Boolean));
+  const { completedMap, isTopicUnlocked, markComplete } = useProgress();
 
   // Fetch this topic's data
   useEffect(() => {

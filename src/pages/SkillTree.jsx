@@ -39,7 +39,7 @@ export default function SkillTree() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  const { isTopicUnlocked, completedMap, loading: progressLoading } = useProgress(allTopics);
+  const { isTopicUnlocked, completedMap, loading: progressLoading } = useProgress();
 
   // ── Fetch data ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -68,7 +68,9 @@ export default function SkillTree() {
     fetchData();
   }, [skillId, userId]);
 
-  // ── Build nodes & edges whenever topic data or progress changes ─────────
+  // ── Build nodes & edges when topic data or progress changes ────────────
+  // Theme is intentionally excluded here — edge color reacts to theme in
+  // a separate, lighter effect below (fix #11).
   useEffect(() => {
     if (allTopics.length === 0) return;
 
@@ -92,7 +94,8 @@ export default function SkillTree() {
       };
     });
 
-    // Build edges from prerequisites
+    // Build edges from prerequisites — use a neutral stroke; the theme
+    // effect below will update colors without rebuilding all nodes.
     const builtEdges = [];
     allTopics.forEach((topic) => {
       (topic.prerequisites || []).forEach((prereqId) => {
@@ -102,12 +105,9 @@ export default function SkillTree() {
           target: topic.id,
           animated: completedMap[prereqId] === true,
           style: {
-            stroke:
-              completedMap[prereqId] === true
-                ? "#1db954"
-                : theme === "light"
-                ? "#94a3b8"
-                : "#3a3a3a",
+            stroke: completedMap[prereqId] === true
+              ? "#1db954"
+              : theme === "light" ? "#94a3b8" : "#3a3a3a",
             strokeWidth: 2,
           },
         });
@@ -117,6 +117,24 @@ export default function SkillTree() {
     setNodes(builtNodes);
     setEdges(builtEdges);
   }, [allTopics, completedMap, isTopicUnlocked, navigate, setNodes, setEdges, theme]);
+
+  // ── Lightweight effect: update edge colors only when theme changes ───────
+  // This avoids rebuilding all nodes just because the user toggled dark/light.
+  useEffect(() => {
+    setEdges((prev) =>
+      prev.map((edge) => {
+        // Don't override the green "completed" stroke
+        if (edge.style?.stroke === "#1db954") return edge;
+        return {
+          ...edge,
+          style: {
+            ...edge.style,
+            stroke: theme === "light" ? "#94a3b8" : "#3a3a3a",
+          },
+        };
+      })
+    );
+  }, [theme, setEdges]);
 
   if (dataLoading || progressLoading) return <Loader message="Loading skill tree..." />;
 

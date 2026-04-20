@@ -6,6 +6,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { createContext, useContext, useEffect, useState } from "react";
+import Loader from "../components/Loader";
 import {
   EmailAuthProvider,
   createUserWithEmailAndPassword,
@@ -217,10 +218,13 @@ export function AuthProvider({ children }) {
     isDemoMode: useDemoMode,
   };
 
+  // Show a full-screen spinner while Firebase resolves the auth state.
+  // This prevents a flash of the login page for already-authenticated users.
+  if (loading) return <Loader message="Authenticating..." />;
+
   return (
     <AuthContext.Provider value={value}>
-      {/* Don't render children until Firebase has resolved the auth state */}
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 }

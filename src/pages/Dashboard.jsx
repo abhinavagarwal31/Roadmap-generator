@@ -4,7 +4,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Loader from "../components/Loader";
@@ -12,7 +12,7 @@ import { getSkills, getTopics } from "../services/topicService";
 import { useProgress } from "../hooks/useProgress";
 import { useAuth } from "../context/AuthContext";
 import { generateAssessmentQuiz, generateTrackWithAi } from "../services/aiTrackService";
-import { addCustomTrack, removeCustomTrack } from "../services/customTrackService";
+import { addCustomTrack, removeCustomTrack, syncCustomTracksFromFirestore } from "../services/customTrackService";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -37,10 +37,16 @@ export default function Dashboard() {
 
   // Fetch all skills and topics on mount
   const refreshDashboardData = useCallback(
-    async ({ showLoader = true } = {}) => {
+    async ({ showLoader = true, syncFirestore = false } = {}) => {
       if (showLoader) setDataLoading(true);
 
       try {
+        // Sync Firestore custom tracks into localStorage before fetching
+        // (only on initial load to avoid extra round-trips on subsequent refreshes)
+        if (syncFirestore) {
+          await syncCustomTracksFromFirestore(userId);
+        }
+
         const [skillsData, topicsData] = await Promise.all([
           getSkills(userId),
           getTopics(userId),
@@ -57,7 +63,8 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
-    refreshDashboardData();
+    // syncFirestore: true on first mount to pull cross-device custom tracks
+    refreshDashboardData({ syncFirestore: true });
   }, [refreshDashboardData]);
 
   function resetTrackBuilderState() {
@@ -169,7 +176,7 @@ export default function Dashboard() {
         },
       });
 
-      addCustomTrack(userId, generatedTrack);
+      await addCustomTrack(userId, generatedTrack);
       await refreshDashboardData({ showLoader: false });
 
       setShowTrackBuilder(false);
@@ -195,7 +202,7 @@ export default function Dashboard() {
     setNotice("");
 
     try {
-      removeCustomTrack(userId, skill.id);
+      await removeCustomTrack(userId, skill.id);
       await refreshDashboardData({ showLoader: false });
       setNotice(`Removed "${skill.name}".`);
     } catch (err) {
@@ -205,7 +212,22 @@ export default function Dashboard() {
     }
   }
 
-  const { progressFor, loading: progressLoading } = useProgress(topics);
+  const { progressFor, loading: progressLoading } = useProgress();
+
+  // ── Memoised skill card data ─────────────────────────────────────────────
+  // Recomputes only when skills list or progress values change (#5 useMemo)
+  const skillCardsData = useMemo(
+    () =>
+      skills.map((skill) => ({
+        ...skill,
+        progress: progressFor(skill.topics),
+        completedCount: Math.round(
+          (progressFor(skill.topics) / 100) * (skill.topics?.length || 0)
+        ),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [skills, progressFor]
+  );
 
   if (dataLoading || progressLoading) return <Loader message="Loading your dashboard..." />;
 
@@ -248,18 +270,18 @@ export default function Dashboard() {
         </div>
 
         {/* Skill cards grid */}
-        {skills.length === 0 ? (
+        {skillCardsData.length === 0 ? (
           <div className="text-center text-gray-600 mt-20">
             <p className="text-lg">No skill paths found.</p>
             <p className="text-sm mt-1">Create your first track to get started.</p>
           </div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2">
-            {skills.map((skill, i) => (
+            {skillCardsData.map((skill, i) => (
               <SkillCard
                 key={skill.id}
                 skill={skill}
-                progress={progressFor(skill.topics)}
+                progress={skill.progress}
                 onViewPath={() => navigate(`/skill/${skill.id}`)}
                 onDeleteTrack={() => handleDeleteTrack(skill)}
                 deleting={deletingSkillId === skill.id}
@@ -283,6 +305,7 @@ export default function Dashboard() {
           onQuizAnswerChange={handleQuizAnswerChange}
           onClose={closeTrackBuilder}
           onSubmit={handleGenerateTrack}
+          show={showTrackBuilder}
         />
       )}
     </div>
@@ -409,7 +432,18 @@ function TrackBuilderModal({
   onQuizAnswerChange,
   onClose,
   onSubmit,
+  show,
 }) {
+  // #6 — useRef: auto-focus the textarea when the modal first opens
+  const promptRef = useRef(null);
+  useEffect(() => {
+    if (show) {
+      // Small delay to let the modal animate in before focusing
+      const t = setTimeout(() => promptRef.current?.focus(), 80);
+      return () => clearTimeout(t);
+    }
+  }, [show]);
+
   const questions = Array.isArray(assessmentQuiz?.questions) ? assessmentQuiz.questions : [];
   const answeredCount = questions.filter((question) => Number.isInteger(quizAnswers[question.id])).length;
   const remainingCount = Math.max(questions.length - answeredCount, 0);
@@ -443,6 +477,7 @@ function TrackBuilderModal({
               What topic do you want to study?
             </label>
             <textarea
+              ref={promptRef}
               id="track-prompt"
               rows={3}
               value={trackPrompt}
