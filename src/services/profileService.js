@@ -1,8 +1,6 @@
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
 import { db, isDemoModeEnabled, isFirebaseConfigured } from "./firebase";
-
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const USER_PROFILE_PREFIX = "lumospath_user_profile_";
 
 export async function getUserProfileDetails(userId) {
@@ -51,7 +49,7 @@ export async function saveUserProfileDetails(userId, profileInput) {
 }
 
 export async function generateProfileMessage({ displayName, stats }) {
-  const response = await fetch(`${API_BASE_URL}/api/ai/profile-message`, {
+  const response = await fetch(`/api/ai/profile-message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

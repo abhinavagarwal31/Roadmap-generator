@@ -42,10 +42,6 @@ Required AI backend vars:
 - `OPENAI_MODEL` (optional, default `gpt-4o-mini`)
 - `API_PORT` (optional, default `8787`)
 
-Optional frontend API var:
-
-- `VITE_API_BASE_URL` (only needed when frontend/backend are on different domains)
-
 For Vercel deployment, add all `VITE_FIREBASE_*` vars in Project Settings -> Environment Variables.
 If these are missing, login is blocked when demo mode is disabled.
 

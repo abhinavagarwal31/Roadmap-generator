@@ -1,15 +1,13 @@
 // Generate custom tracks via backend API.
 // The backend reads OPENAI_API_KEY from server env.
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
-
 export async function generateAssessmentQuiz({ prompt }) {
   const cleanedPrompt = (prompt || "").trim();
   if (!cleanedPrompt) {
     throw new Error("Please enter a topic before starting the assessment.");
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/ai/generate-assessment`, {
+  const response = await fetch(`/api/ai/generate-assessment`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -47,7 +45,7 @@ export async function generateTrackWithAi({ prompt, assessment }) {
 
   const normalizedAssessment = normalizeAssessmentPayload(assessment);
 
-  const response = await fetch(`${API_BASE_URL}/api/ai/generate-track`, {
+  const response = await fetch(`/api/ai/generate-track`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
