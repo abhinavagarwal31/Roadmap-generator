@@ -46,6 +46,10 @@ const BREADTH_HINTS = [
   "security",
 ];
 
+const ASSESSMENT_MIN_QUESTIONS = 8;
+const ASSESSMENT_MAX_QUESTIONS = 12;
+const ASSESSMENT_DEFAULT_QUESTIONS = 8;
+
 const TRUSTED_RESOURCE_HOSTS = [
   "developer.mozilla.org",
   "react.dev",
@@ -132,15 +136,58 @@ export async function callOpenAi({ apiKey, model, temperature, messages }) {
   };
 }
 
-export function buildAssessmentPrompt(prompt) {
-  return `Create a short diagnostic quiz for the learning topic: ${prompt}
+export function estimateAssessmentPlan(prompt) {
+  const normalizedPrompt = safeText(prompt).toLowerCase();
+  const wordCount = normalizedPrompt ? normalizedPrompt.split(/\s+/).filter(Boolean).length : 0;
+
+  let complexityBoost = 0;
+  if (wordCount >= 8) complexityBoost += 1;
+  if (wordCount >= 16) complexityBoost += 1;
+  if (wordCount >= 26) complexityBoost += 1;
+
+  const breadthHits = BREADTH_HINTS.reduce(
+    (count, hint) => count + (normalizedPrompt.includes(hint) ? 1 : 0),
+    0
+  );
+  if (breadthHits >= 2) complexityBoost += 1;
+  if (breadthHits >= 4) complexityBoost += 1;
+
+  const targetQuestions = clamp(
+    ASSESSMENT_DEFAULT_QUESTIONS + complexityBoost,
+    ASSESSMENT_MIN_QUESTIONS,
+    ASSESSMENT_MAX_QUESTIONS
+  );
+
+  const minRequiredQuestions = clamp(
+    targetQuestions - 1,
+    ASSESSMENT_MIN_QUESTIONS,
+    ASSESSMENT_MAX_QUESTIONS
+  );
+
+  return {
+    targetQuestions,
+    minRequiredQuestions,
+    maxQuestions: ASSESSMENT_MAX_QUESTIONS,
+  };
+}
+
+export function buildAssessmentPrompt(prompt, assessmentPlan, strictMode = false) {
+  const plan = assessmentPlan || estimateAssessmentPlan(prompt);
+  const strictInstructions = strictMode
+    ? `\n- IMPORTANT: Your previous quiz was too short. Expand it now.\n- Do not return fewer than ${plan.minRequiredQuestions} questions.`
+    : "";
+
+  return `Create a diagnostic quiz for the learning topic: ${prompt}
 
 Requirements:
-- Exactly 5 multiple-choice questions
+- Return around ${plan.targetQuestions} multiple-choice questions
+- Do not return fewer than ${plan.minRequiredQuestions} questions
+- Do not return more than ${plan.maxQuestions} questions
 - Questions should progress from basic to advanced
 - Each question must have exactly 4 options
 - Exactly one option must be correct
 - Keep each question practical and concept-focused (avoid trivia)
+- Add a difficulty value for each question: beginner, intermediate, or advanced${strictInstructions}
 
 Return exactly this JSON shape:
 {
@@ -148,6 +195,7 @@ Return exactly this JSON shape:
   "questions": [
     {
       "question": "string",
+      "difficulty": "beginner|intermediate|advanced",
       "options": ["string", "string", "string", "string"],
       "correctOptionIndex": 0,
       "explanation": "string"
@@ -169,11 +217,23 @@ export function buildTrackPrompt({ prompt, level, levelProfile, roadmapPlan, ass
   return `Create a practical learning track for: ${prompt}\n\nConstraints:\n- Learner readiness is inferred from quiz performance (not manually selected)\n- Inferred readiness: ${inferredLevelLabel}\n- Quiz summary: ${quizSummary}\n- Topic count is auto-selected by inferred readiness and topic breadth\n- Target coverage depth: ${levelProfile.coverage}\n- Roadmap target topic count: ${roadmapPlan.targetTopics}\n- Preferred topic range for this request: ${roadmapPlan.minRequestedTopics}-${roadmapPlan.maxRequestedTopics}\n- Absolute minimum topic count for this learner profile: ${roadmapPlan.minRequiredTopics}\n- Include all essential and relevant topics for this profile\n- Topics should flow from fundamentals to advanced concepts\n- Include concise, realistic topic descriptions\n- Include 3-5 high quality resources per topic\n- Prefer trustworthy sources such as official docs, respected tutorials, and well-known educational platforms\n- Use only real, valid HTTPS links${strictInstructions}\n\nQuality checks before returning JSON:\n- topics.length must be >= ${roadmapPlan.minRequiredTopics}\n- topics.length should usually be between ${roadmapPlan.minRequestedTopics} and ${roadmapPlan.maxRequestedTopics}\n- If the requested skill is broad, add extra modules instead of collapsing the roadmap\n\nReturn exactly this JSON shape:\n{\n  "skillName": "string",\n  "skillDescription": "string",\n  "topics": [\n    {\n      "title": "string",\n      "description": "string",\n      "resources": [\n        { "label": "string", "url": "https://..." }\n      ],\n      "prerequisiteIndexes": [0]\n    }\n  ]\n}\n\nRules for prerequisiteIndexes:\n- Use indexes that point to earlier topics only\n- First topic should usually have []\n- Keep dependencies simple and acyclic`;
 }
 
-export function normalizeAssessmentQuiz(rawQuiz, prompt) {
+export function normalizeAssessmentQuiz(rawQuiz, prompt, assessmentPlan) {
+  const plan = assessmentPlan || estimateAssessmentPlan(prompt);
+  const minRequiredQuestions = clamp(
+    Number(plan?.minRequiredQuestions) || ASSESSMENT_MIN_QUESTIONS,
+    4,
+    ASSESSMENT_MAX_QUESTIONS
+  );
+  const maxQuestions = clamp(
+    Number(plan?.maxQuestions) || ASSESSMENT_MAX_QUESTIONS,
+    minRequiredQuestions,
+    ASSESSMENT_MAX_QUESTIONS
+  );
+
   const rawQuestions = Array.isArray(rawQuiz?.questions) ? rawQuiz.questions : [];
 
   const questions = rawQuestions
-    .slice(0, 5)
+    .slice(0, maxQuestions)
     .map((question, index) => {
       const questionText = safeText(question?.question);
       if (!questionText) return null;
@@ -193,6 +253,7 @@ export function normalizeAssessmentQuiz(rawQuiz, prompt) {
       return {
         id: `assessment-${index + 1}`,
         question: questionText,
+        difficulty: normalizeAssessmentDifficulty(question?.difficulty, index, rawQuestions.length),
         options,
         correctOptionIndex,
         explanation: safeText(question?.explanation),
@@ -200,7 +261,7 @@ export function normalizeAssessmentQuiz(rawQuiz, prompt) {
     })
     .filter(Boolean);
 
-  if (questions.length < 5) return null;
+  if (questions.length < minRequiredQuestions) return null;
 
   return {
     topic: safeText(rawQuiz?.topic) || prompt,
@@ -411,6 +472,20 @@ function dedupeResources(resources) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeAssessmentDifficulty(value, index, totalQuestions) {
+  const normalized = safeText(value).toLowerCase();
+  if (["beginner", "intermediate", "advanced"].includes(normalized)) {
+    return normalized;
+  }
+
+  const safeTotal = Math.max(1, Number(totalQuestions) || 1);
+  const ratio = (index + 1) / safeTotal;
+
+  if (ratio <= 0.35) return "beginner";
+  if (ratio <= 0.75) return "intermediate";
+  return "advanced";
 }
 
 function formatLevelLabel(value) {

@@ -220,7 +220,7 @@ export default function Dashboard() {
             <div>
               <h1 className="text-3xl font-bold text-white mb-1">Hey {learnerName}</h1>
               <p className="text-gray-500 text-sm">
-                Your learning dashboard is ready. Pick a path, or take a quick quiz to get a personalized AI roadmap.
+                Your learning dashboard is ready. Pick a path, or take an adaptive assessment to get a personalized AI roadmap.
               </p>
             </div>
 
@@ -362,6 +362,41 @@ function SkillCard({ skill, progress, onViewPath, onDeleteTrack, deleting, delay
   );
 }
 
+function getDifficultyMeta(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (normalized === "advanced") {
+    return {
+      label: "Advanced",
+      className: "border-rose-900/70 bg-rose-950/40 text-rose-300",
+    };
+  }
+
+  if (normalized === "intermediate") {
+    return {
+      label: "Intermediate",
+      className: "border-amber-900/70 bg-amber-950/40 text-amber-300",
+    };
+  }
+
+  return {
+    label: "Beginner",
+    className: "border-emerald-900/70 bg-emerald-950/40 text-emerald-300",
+  };
+}
+
+function DifficultyBadge({ difficulty }) {
+  const meta = getDifficultyMeta(difficulty);
+
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${meta.className}`}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
 function TrackBuilderModal({
   trackPrompt,
   onTrackPromptChange,
@@ -377,6 +412,8 @@ function TrackBuilderModal({
 }) {
   const questions = Array.isArray(assessmentQuiz?.questions) ? assessmentQuiz.questions : [];
   const answeredCount = questions.filter((question) => Number.isInteger(quizAnswers[question.id])).length;
+  const remainingCount = Math.max(questions.length - answeredCount, 0);
+  const completionPercent = questions.length ? Math.round((answeredCount / questions.length) * 100) : 0;
   const isQuizComplete = questions.length > 0 && answeredCount === questions.length;
 
   return (
@@ -386,7 +423,7 @@ function TrackBuilderModal({
           <div>
             <h2 className="text-xl font-semibold text-white">Create Personalized AI Roadmap</h2>
             <p className="mt-1 text-sm text-gray-500">
-              Enter your topic, take a short quiz, and get a roadmap tailored to your current knowledge.
+              Enter your topic, take an adaptive assessment, and get a roadmap tailored to your current knowledge.
             </p>
           </div>
 
@@ -419,14 +456,14 @@ function TrackBuilderModal({
             </p>
           </div>
 
-          <div className="rounded border border-neutral-800 bg-bg-elevated px-3 py-3">
+          <div className="rounded-lg border border-neutral-800 bg-gradient-to-br from-bg-elevated via-bg-elevated to-red-950/20 px-4 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-accent-red">Knowledge Assessment</p>
                 <p className="mt-1 text-sm text-gray-300">
                   {questions.length > 0
-                    ? `Answer all ${questions.length} quiz questions to generate your roadmap.`
-                    : "Start a short 5-question quiz to assess your current level automatically."}
+                    ? `Answer all ${questions.length} questions. Difficulty ramps up as you move forward.`
+                    : "Start an adaptive 8-12 question quiz to estimate your current level automatically."}
                 </p>
               </div>
 
@@ -437,39 +474,63 @@ function TrackBuilderModal({
                 className="rounded border border-accent-red px-3 py-2 text-xs font-medium text-accent-red
                            hover:bg-accent-red hover:text-white transition-colors disabled:opacity-50"
               >
-                {quizLoading ? "Generating Quiz..." : questions.length > 0 ? "Regenerate Quiz" : "Start Quiz"}
+                {quizLoading
+                  ? "Generating Assessment..."
+                  : questions.length > 0
+                  ? "Regenerate Assessment"
+                  : "Start Assessment"}
               </button>
             </div>
 
             {questions.length > 0 && (
-              <p className="mt-2 text-xs text-gray-500">
-                {answeredCount}/{questions.length} answered
-              </p>
+              <div className="mt-3 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <p>
+                    {answeredCount}/{questions.length} answered
+                  </p>
+                  <p>{remainingCount} left</p>
+                </div>
+
+                <div className="h-2 overflow-hidden rounded-full bg-neutral-800">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-accent-red/70 via-accent-red to-orange-400 transition-all duration-300"
+                    style={{ width: `${completionPercent}%` }}
+                  />
+                </div>
+              </div>
             )}
           </div>
 
           {questions.length > 0 && (
-            <div className="space-y-4">
+            <div className="max-h-[48vh] space-y-4 overflow-y-auto pr-1">
               {questions.map((question, index) => (
                 <fieldset
                   key={question.id}
-                  className="rounded border border-neutral-800 bg-bg-elevated px-3 py-3"
+                  className="relative overflow-hidden rounded-lg border border-neutral-800 bg-bg-elevated/90 p-4"
                 >
-                  <legend className="text-sm font-medium text-white">
-                    Q{index + 1}. {question.question}
-                  </legend>
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-red/60 to-transparent" />
 
-                  <div className="mt-3 space-y-2">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <span className="rounded-full border border-neutral-700 bg-bg-card px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-gray-400">
+                      Question {index + 1}
+                    </span>
+                    <DifficultyBadge difficulty={question.difficulty} />
+                  </div>
+
+                  <p className="text-sm font-medium leading-relaxed text-white">{question.question}</p>
+
+                  <div className="mt-4 grid gap-2">
                     {question.options.map((option, optionIndex) => {
                       const selected = quizAnswers[question.id] === optionIndex;
+                      const optionLetter = String.fromCharCode(65 + optionIndex);
 
                       return (
                         <label
                           key={`${question.id}-option-${optionIndex}`}
-                          className={`flex cursor-pointer items-start gap-2 rounded border px-2.5 py-2 text-sm transition-colors ${
+                          className={`group flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm transition-colors ${
                             selected
-                              ? "border-accent-red bg-red-950/20 text-white"
-                              : "border-neutral-800 text-gray-300 hover:border-neutral-600"
+                              ? "border-accent-red bg-red-950/30 text-white"
+                              : "border-neutral-800 text-gray-300 hover:border-neutral-600 hover:bg-bg-card"
                           }`}
                         >
                           <input
@@ -477,9 +538,26 @@ function TrackBuilderModal({
                             name={question.id}
                             checked={selected}
                             onChange={() => onQuizAnswerChange(question.id, optionIndex)}
-                            className="mt-0.5"
+                            className="sr-only"
                           />
-                          <span>{option}</span>
+
+                          <span
+                            className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors ${
+                              selected
+                                ? "border-accent-red bg-accent-red/20 text-accent-red"
+                                : "border-neutral-600 text-gray-400 group-hover:border-neutral-500"
+                            }`}
+                          >
+                            {optionLetter}
+                          </span>
+
+                          <span className="flex-1 leading-relaxed">{option}</span>
+
+                          {selected && (
+                            <span className="rounded border border-accent-red/70 bg-red-950/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent-red">
+                              Selected
+                            </span>
+                          )}
                         </label>
                       );
                     })}
@@ -496,7 +574,11 @@ function TrackBuilderModal({
           )}
 
           {!isQuizComplete && (
-            <p className="text-xs text-gray-500">Complete the quiz to unlock personalized track generation.</p>
+            <p className="text-xs text-gray-500">
+              {questions.length > 0
+                ? `Answer the remaining ${remainingCount} question${remainingCount === 1 ? "" : "s"} to unlock personalized track generation.`
+                : "Start the assessment to unlock personalized track generation."}
+            </p>
           )}
 
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

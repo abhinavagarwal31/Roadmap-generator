@@ -1,6 +1,7 @@
 import {
   buildAssessmentPrompt,
   callOpenAi,
+  estimateAssessmentPlan,
   ensurePost,
   getJsonBody,
   getModelName,
@@ -26,35 +27,64 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Prompt is required." });
     }
 
-    const result = await callOpenAi({
-      apiKey,
-      model: getModelName(),
-      temperature: 0.3,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert technical interviewer. Create concise diagnostic quizzes and return only valid JSON.",
-        },
-        {
-          role: "user",
-          content: buildAssessmentPrompt(prompt),
-        },
-      ],
-    });
+    const assessmentPlan = estimateAssessmentPlan(prompt);
 
-    if (!result.ok) {
-      return res.status(result.status).json({
-        error: result.error || "AI assessment generation failed.",
+    const runAssessmentGeneration = async ({ strictMode = false } = {}) => {
+      const result = await callOpenAi({
+        apiKey,
+        model: getModelName(),
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an expert technical interviewer. Create concise diagnostic quizzes and return only valid JSON.",
+          },
+          {
+            role: "user",
+            content: buildAssessmentPrompt(prompt, assessmentPlan, strictMode),
+          },
+        ],
+      });
+
+      if (!result.ok) {
+        return {
+          ok: false,
+          status: result.status,
+          error: result.error || "AI assessment generation failed.",
+        };
+      }
+
+      const parsed = parseJsonSafely(result.content);
+      return {
+        ok: true,
+        quiz: normalizeAssessmentQuiz(parsed, prompt, assessmentPlan),
+      };
+    };
+
+    const firstAttempt = await runAssessmentGeneration();
+    if (!firstAttempt.ok) {
+      return res.status(firstAttempt.status).json({
+        error: firstAttempt.error,
       });
     }
 
-    const parsed = parseJsonSafely(result.content);
-    const quiz = normalizeAssessmentQuiz(parsed, prompt);
+    let quiz = firstAttempt.quiz;
+
+    if (!quiz) {
+      const secondAttempt = await runAssessmentGeneration({ strictMode: true });
+      if (!secondAttempt.ok) {
+        return res.status(secondAttempt.status).json({
+          error: secondAttempt.error,
+        });
+      }
+
+      quiz = secondAttempt.quiz;
+    }
 
     if (!quiz) {
       return res.status(502).json({
-        error: "AI returned an invalid assessment quiz.",
+        error: `AI returned an invalid assessment quiz (too few questions). Please try again.`,
       });
     }
 

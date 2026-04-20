@@ -54,6 +54,10 @@ const BREADTH_HINTS = [
   "security",
 ];
 
+const ASSESSMENT_MIN_QUESTIONS = 8;
+const ASSESSMENT_MAX_QUESTIONS = 12;
+const ASSESSMENT_DEFAULT_QUESTIONS = 8;
+
 const TRUSTED_RESOURCE_HOSTS = [
   "developer.mozilla.org",
   "react.dev",
@@ -99,46 +103,73 @@ app.post("/api/ai/generate-assessment", async (req, res) => {
       return res.status(400).json({ error: "Prompt is required." });
     }
 
+    const assessmentPlan = estimateAssessmentPlan(prompt);
     const model = String(process.env.OPENAI_MODEL || "gpt-4o-mini").trim();
 
-    const response = await globalThis.fetch(openAiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert technical interviewer. Create concise diagnostic quizzes and return only valid JSON.",
-          },
-          {
-            role: "user",
-            content: buildAssessmentPrompt(prompt),
-          },
-        ],
-      }),
-    });
+    const runAssessmentGeneration = async ({ strictMode = false } = {}) => {
+      const response = await globalThis.fetch(openAiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.3,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an expert technical interviewer. Create concise diagnostic quizzes and return only valid JSON.",
+            },
+            {
+              role: "user",
+              content: buildAssessmentPrompt(prompt, assessmentPlan, strictMode),
+            },
+          ],
+        }),
+      });
 
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: payload?.error?.message || "AI assessment generation failed.",
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          ok: false,
+          status: response.status,
+          error: payload?.error?.message || "AI assessment generation failed.",
+        };
+      }
+
+      const content = payload?.choices?.[0]?.message?.content;
+      return {
+        ok: true,
+        quiz: normalizeAssessmentQuiz(parseJsonSafely(content), prompt, assessmentPlan),
+      };
+    };
+
+    const firstAttempt = await runAssessmentGeneration();
+    if (!firstAttempt.ok) {
+      return res.status(firstAttempt.status).json({
+        error: firstAttempt.error,
       });
     }
 
-    const content = payload?.choices?.[0]?.message?.content;
-    const parsed = parseJsonSafely(content);
-    const quiz = normalizeAssessmentQuiz(parsed, prompt);
+    let quiz = firstAttempt.quiz;
+
+    if (!quiz) {
+      const secondAttempt = await runAssessmentGeneration({ strictMode: true });
+      if (!secondAttempt.ok) {
+        return res.status(secondAttempt.status).json({
+          error: secondAttempt.error,
+        });
+      }
+
+      quiz = secondAttempt.quiz;
+    }
 
     if (!quiz) {
       return res.status(502).json({
-        error: "AI returned an invalid assessment quiz.",
+        error: "AI returned an invalid assessment quiz (too few questions).",
       });
     }
 
@@ -331,15 +362,58 @@ app.listen(port, () => {
   console.log(`AI API server running on http://localhost:${port}`);
 });
 
-function buildAssessmentPrompt(prompt) {
-  return `Create a short diagnostic quiz for the learning topic: ${prompt}
+function estimateAssessmentPlan(prompt) {
+  const normalizedPrompt = safeText(prompt).toLowerCase();
+  const wordCount = normalizedPrompt ? normalizedPrompt.split(/\s+/).filter(Boolean).length : 0;
+
+  let complexityBoost = 0;
+  if (wordCount >= 8) complexityBoost += 1;
+  if (wordCount >= 16) complexityBoost += 1;
+  if (wordCount >= 26) complexityBoost += 1;
+
+  const breadthHits = BREADTH_HINTS.reduce(
+    (count, hint) => count + (normalizedPrompt.includes(hint) ? 1 : 0),
+    0
+  );
+  if (breadthHits >= 2) complexityBoost += 1;
+  if (breadthHits >= 4) complexityBoost += 1;
+
+  const targetQuestions = clamp(
+    ASSESSMENT_DEFAULT_QUESTIONS + complexityBoost,
+    ASSESSMENT_MIN_QUESTIONS,
+    ASSESSMENT_MAX_QUESTIONS
+  );
+
+  const minRequiredQuestions = clamp(
+    targetQuestions - 1,
+    ASSESSMENT_MIN_QUESTIONS,
+    ASSESSMENT_MAX_QUESTIONS
+  );
+
+  return {
+    targetQuestions,
+    minRequiredQuestions,
+    maxQuestions: ASSESSMENT_MAX_QUESTIONS,
+  };
+}
+
+function buildAssessmentPrompt(prompt, assessmentPlan, strictMode = false) {
+  const plan = assessmentPlan || estimateAssessmentPlan(prompt);
+  const strictInstructions = strictMode
+    ? `\n- IMPORTANT: Your previous quiz was too short. Expand it now.\n- Do not return fewer than ${plan.minRequiredQuestions} questions.`
+    : "";
+
+  return `Create a diagnostic quiz for the learning topic: ${prompt}
 
 Requirements:
-- Exactly 5 multiple-choice questions
+- Return around ${plan.targetQuestions} multiple-choice questions
+- Do not return fewer than ${plan.minRequiredQuestions} questions
+- Do not return more than ${plan.maxQuestions} questions
 - Questions should progress from basic to advanced
 - Each question must have exactly 4 options
 - Exactly one option must be correct
 - Keep each question practical and concept-focused (avoid trivia)
+- Add a difficulty value for each question: beginner, intermediate, or advanced${strictInstructions}
 
 Return exactly this JSON shape:
 {
@@ -347,6 +421,7 @@ Return exactly this JSON shape:
   "questions": [
     {
       "question": "string",
+      "difficulty": "beginner|intermediate|advanced",
       "options": ["string", "string", "string", "string"],
       "correctOptionIndex": 0,
       "explanation": "string"
@@ -402,11 +477,23 @@ function normalizeAssessmentInput(input) {
   };
 }
 
-function normalizeAssessmentQuiz(rawQuiz, prompt) {
+function normalizeAssessmentQuiz(rawQuiz, prompt, assessmentPlan) {
+  const plan = assessmentPlan || estimateAssessmentPlan(prompt);
+  const minRequiredQuestions = clamp(
+    Number(plan?.minRequiredQuestions) || ASSESSMENT_MIN_QUESTIONS,
+    4,
+    ASSESSMENT_MAX_QUESTIONS
+  );
+  const maxQuestions = clamp(
+    Number(plan?.maxQuestions) || ASSESSMENT_MAX_QUESTIONS,
+    minRequiredQuestions,
+    ASSESSMENT_MAX_QUESTIONS
+  );
+
   const rawQuestions = Array.isArray(rawQuiz?.questions) ? rawQuiz.questions : [];
 
   const questions = rawQuestions
-    .slice(0, 5)
+    .slice(0, maxQuestions)
     .map((question, index) => {
       const questionText = safeText(question?.question);
       if (!questionText) return null;
@@ -426,6 +513,7 @@ function normalizeAssessmentQuiz(rawQuiz, prompt) {
       return {
         id: `assessment-${index + 1}`,
         question: questionText,
+        difficulty: normalizeAssessmentDifficulty(question?.difficulty, index, rawQuestions.length),
         options,
         correctOptionIndex,
         explanation: safeText(question?.explanation),
@@ -433,7 +521,7 @@ function normalizeAssessmentQuiz(rawQuiz, prompt) {
     })
     .filter(Boolean);
 
-  if (questions.length < 5) return null;
+  if (questions.length < minRequiredQuestions) return null;
 
   return {
     topic: safeText(rawQuiz?.topic) || prompt,
@@ -499,6 +587,20 @@ function countTrackTopics(track) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeAssessmentDifficulty(value, index, totalQuestions) {
+  const normalized = safeText(value).toLowerCase();
+  if (["beginner", "intermediate", "advanced"].includes(normalized)) {
+    return normalized;
+  }
+
+  const safeTotal = Math.max(1, Number(totalQuestions) || 1);
+  const ratio = (index + 1) / safeTotal;
+
+  if (ratio <= 0.35) return "beginner";
+  if (ratio <= 0.75) return "intermediate";
+  return "advanced";
 }
 
 function formatLevelLabel(value) {

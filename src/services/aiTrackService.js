@@ -1,6 +1,9 @@
 // Generate custom tracks via backend API.
 // The backend reads OPENAI_API_KEY from server env.
 
+const ASSESSMENT_MIN_QUESTIONS = 8;
+const ASSESSMENT_MAX_QUESTIONS = 12;
+
 export async function generateAssessmentQuiz({ prompt }) {
   const cleanedPrompt = (prompt || "").trim();
   if (!cleanedPrompt) {
@@ -79,7 +82,7 @@ function normalizeAssessmentQuiz(rawQuiz, prompt) {
   const rawQuestions = Array.isArray(rawQuiz?.questions) ? rawQuiz.questions : [];
 
   const questions = rawQuestions
-    .slice(0, 5)
+    .slice(0, ASSESSMENT_MAX_QUESTIONS)
     .map((question, index) => {
       const questionText = safeText(question?.question);
       const options = (Array.isArray(question?.options) ? question.options : [])
@@ -99,13 +102,14 @@ function normalizeAssessmentQuiz(rawQuiz, prompt) {
       return {
         id: `assessment-${index + 1}-${questionSlug.slice(0, 24)}`,
         question: questionText,
+        difficulty: normalizeAssessmentDifficulty(question?.difficulty, index, rawQuestions.length),
         options,
         correctOptionIndex,
       };
     })
     .filter(Boolean);
 
-  if (questions.length < 4) {
+  if (questions.length < ASSESSMENT_MIN_QUESTIONS) {
     throw new Error("Assessment quiz was incomplete. Please try again.");
   }
 
@@ -275,6 +279,20 @@ function toTitleCase(input) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeAssessmentDifficulty(value, index, totalQuestions) {
+  const normalized = safeText(value).toLowerCase();
+  if (["beginner", "intermediate", "advanced"].includes(normalized)) {
+    return normalized;
+  }
+
+  const safeTotal = Math.max(1, Number(totalQuestions) || 1);
+  const ratio = (index + 1) / safeTotal;
+
+  if (ratio <= 0.35) return "beginner";
+  if (ratio <= 0.75) return "intermediate";
+  return "advanced";
 }
 
 function toPositiveInteger(value) {
